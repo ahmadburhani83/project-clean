@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { MOCK_PRODUCTS, MOCK_PARTNERS } from "@/lib/mock-data";
+import { createBrowserClient } from "@supabase/ssr";
+import { MOCK_PRODUCTS, MOCK_PARTNERS, CATEGORIES_LIST } from "@/lib/mock-data";
+import { SUPABASE_SCHEMA_SQL } from "@/lib/supabase/schema-sql";
 import { formatRupiah } from "@/lib/utils";
 import { Product, PartnerStore, HazardLevel, ProductCategory, ProductVariant } from "@/types/store.types";
 import { HazardBadge } from "@/components/product/HazardBadge";
@@ -83,7 +85,16 @@ export default function AdminDashboardPage() {
   // ==========================================================
   // 2. STATE PERSISTENSI MASTER DATA & TOKO
   // ==========================================================
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "partners" | "orders" | "safety" | "store_settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "partners" | "orders" | "safety" | "store_settings" | "supabase_connect">("supabase_connect");
+
+  // State Supabase Connection & Setup
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState("");
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState("");
+  const [supabaseTestStatus, setSupabaseTestStatus] = useState<"idle" | "testing" | "success" | "error_table" | "error_auth">("idle");
+  const [supabaseMessage, setSupabaseMessage] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
+  const [copiedSql, setCopiedSql] = useState(false);
 
   // Profil Toko Pusat (Dapat diedit semua)
   const [storeProfile, setStoreProfile] = useState({
@@ -178,8 +189,120 @@ export default function AdminDashboardPage() {
       if (savedStore) {
         try { setStoreProfile(JSON.parse(savedStore)); } catch {}
       }
+      const storedUrl = localStorage.getItem("custom_supabase_url") || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const storedKey = localStorage.getItem("custom_supabase_key") || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      setSupabaseUrlInput(storedUrl);
+      setSupabaseKeyInput(storedKey);
+      if (storedUrl && storedKey) {
+        setSupabaseTestStatus("success");
+        setSupabaseMessage("Koneksi Supabase tersimpan!");
+      }
     }
   }, []);
+
+  const handleTestSupabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUrl = supabaseUrlInput.trim();
+    const cleanKey = supabaseKeyInput.trim();
+
+    if (!cleanUrl || !cleanKey) {
+      alert("Mohon masukkan Project URL dan Anon Key Supabase Anda.");
+      return;
+    }
+
+    setSupabaseTestStatus("testing");
+    setSupabaseMessage("Menghubungi server Supabase...");
+
+    try {
+      const client = createBrowserClient(cleanUrl, cleanKey);
+      const { data, error } = await client.from("products").select("id, name").limit(5);
+
+      if (error) {
+        if (error.message.includes("does not exist") || error.code === "42P01") {
+          setSupabaseTestStatus("error_table");
+          setSupabaseMessage("Koneksi ke Supabase berhasil! Namun tabel 'products' belum dibuat di database Anda. Silakan jalankan kode SQL schema di bawah.");
+          localStorage.setItem("custom_supabase_url", cleanUrl);
+          localStorage.setItem("custom_supabase_key", cleanKey);
+        } else {
+          setSupabaseTestStatus("error_auth");
+          setSupabaseMessage("Gagal tersambung: " + error.message);
+        }
+      } else {
+        setSupabaseTestStatus("success");
+        setSupabaseMessage(`Berhasil terhubung ke Supabase! Database aktif dan ditemukan ${data?.length || 0} produk.`);
+        localStorage.setItem("custom_supabase_url", cleanUrl);
+        localStorage.setItem("custom_supabase_key", cleanKey);
+      }
+    } catch (err: any) {
+      setSupabaseTestStatus("error_auth");
+      setSupabaseMessage("Kesalahan koneksi: " + (err?.message || "Periksa kembali Project URL dan Anon Key"));
+    }
+  };
+
+  const handleCopySql = () => {
+    if (typeof window !== "undefined") {
+      navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
+      setCopiedSql(true);
+      setTimeout(() => setCopiedSql(false), 3000);
+    }
+  };
+
+  const handleSyncDataToSupabase = async () => {
+    const cleanUrl = supabaseUrlInput.trim();
+    const cleanKey = supabaseKeyInput.trim();
+    if (!cleanUrl || !cleanKey) {
+      alert("Masukkan dan simpan Project URL dan Anon Key terlebih dahulu.");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncProgress("Memulai proses upload master data ke Supabase...");
+
+    try {
+      const client = createBrowserClient(cleanUrl, cleanKey);
+
+      // 1. Upload Kategori
+      setSyncProgress("Mengunggah master kategori produk...");
+      const categoriesData = [
+        { id: "11111111-1111-1111-1111-111111111101", name: "Kimia Rumah Tangga", slug: "rumah-tangga", description: "Pembersih rumah tangga", display_order: 1 },
+        { id: "11111111-1111-1111-1111-111111111102", name: "Kimia Laundry", slug: "laundry", description: "Pembersih laundry", display_order: 2 },
+        { id: "11111111-1111-1111-1111-111111111103", name: "Bahan Kimia Teknis", slug: "industri", description: "Bahan baku kimia mentah", display_order: 3 },
+        { id: "11111111-1111-1111-1111-111111111104", name: "Aroma & Bibit Parfum", slug: "aroma-bibit", description: "Bibit parfum murni", display_order: 4 },
+        { id: "11111111-1111-1111-1111-111111111105", name: "Kemasan & Wadah", slug: "kemasan", description: "Jerigen dan botol", display_order: 5 }
+      ];
+      await client.from("categories").upsert(categoriesData, { onConflict: "slug" });
+
+      // 2. Upload Mitra Daerah
+      setSyncProgress("Mengunggah jaringan mitra daerah...");
+      for (const partner of partnersList) {
+        await client.from("partners").upsert({
+          name: partner.name,
+          slug: partner.slug,
+          owner_name: partner.ownerName,
+          phone: partner.phone,
+          whatsapp: partner.whatsapp,
+          address: partner.address,
+          city: partner.city,
+          province: partner.province,
+          district: partner.district,
+          latitude: partner.latitude,
+          longitude: partner.longitude,
+          service_radius_km: partner.serviceRadiusKm,
+          operational_hours: partner.operationalHours,
+          supports_pickup: partner.supportsPickup,
+          supports_local_delivery: partner.supportsLocalDelivery,
+          is_active: true
+        }, { onConflict: "slug" });
+      }
+
+      setSyncProgress("✅ Selesai! Semua data kategori & mitra berhasil diunggah ke Supabase!");
+      alert("Sukses! Data telah berhasil disinkronkan ke database Supabase Anda.");
+    } catch (err: any) {
+      setSyncProgress("Gagal: " + (err?.message || "Terjadi kesalahan saat upload"));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Simpan data setiap ada perubahan
   const saveProductsToStorage = (updated: Product[]) => {
@@ -419,6 +542,18 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setActiveTab("supabase_connect")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              supabaseTestStatus === "success"
+                ? "bg-emerald-950/80 text-emerald-300 border-emerald-700"
+                : "bg-amber-950/80 text-amber-300 border-amber-700"
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>{supabaseTestStatus === "success" ? "🟢 Supabase Terhubung" : "⚡ Hubungkan Supabase"}</span>
+          </button>
+
           <Link
             href="/"
             target="_blank"
@@ -449,6 +584,23 @@ export default function AdminDashboardPage() {
               Navigasi Admin
             </span>
             <nav className="space-y-1">
+              <button
+                onClick={() => setActiveTab("supabase_connect")}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                  activeTab === "supabase_connect"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                    : "text-emerald-400 hover:text-white hover:bg-slate-800/60 border border-emerald-800/50"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Database className="w-4 h-4" />
+                  <span>Koneksi Supabase</span>
+                </div>
+                <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                  Setup
+                </span>
+              </button>
+
               <button
                 onClick={() => setActiveTab("overview")}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
@@ -542,6 +694,170 @@ export default function AdminDashboardPage() {
         {/* AREA KONTEN UTAMA */}
         <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
           
+          {/* TAB 0: KONEKSI SUPABASE (ASSISTANT & SETUP WIZARD) */}
+          {activeTab === "supabase_connect" && (
+            <div className="space-y-6 animate-in fade-in max-w-4xl">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/30 mb-2">
+                  <Database className="w-3.5 h-3.5" /> Panduan & Pengujian Database Supabase
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">
+                  Hubungkan Database Supabase (Mudah & Cepat)
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ikuti 3 langkah praktis di bawah agar website Anda terhubung langsung ke basis data cloud Supabase.
+                </p>
+              </div>
+
+              {/* Status Banner */}
+              <div className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                supabaseTestStatus === "success"
+                  ? "bg-emerald-950/40 border-emerald-700/80 text-emerald-300"
+                  : supabaseTestStatus === "error_table"
+                  ? "bg-amber-950/40 border-amber-700/80 text-amber-300"
+                  : supabaseTestStatus === "error_auth"
+                  ? "bg-red-950/40 border-red-700/80 text-red-300"
+                  : "bg-blue-950/40 border-blue-700/80 text-blue-300"
+              }`}>
+                <div className="p-2 rounded-xl bg-slate-900 shrink-0">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div className="space-y-1 text-xs flex-1">
+                  <span className="font-bold block text-sm">
+                    {supabaseTestStatus === "success"
+                      ? "🟢 Database Supabase Aktif & Terhubung!"
+                      : supabaseTestStatus === "error_table"
+                      ? "🟡 Koneksi Berhasil, Tetapi Tabel Belum Dibuat!"
+                      : supabaseTestStatus === "error_auth"
+                      ? "🔴 Gagal Menghubungi Supabase"
+                      : "⚪ Masukkan Project URL & Anon Key Supabase Anda"}
+                  </span>
+                  <p className="leading-relaxed">
+                    {supabaseMessage || "Website saat ini siap dihubungkan. Masukkan URL dan Key dari dashboard Supabase Anda di bawah."}
+                  </p>
+                </div>
+              </div>
+
+              {/* LANGKAH 1: FORM INPUT KUNCI API */}
+              <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700/80 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white">1</span>
+                  <h3 className="font-bold text-sm text-white">Masukkan Kunci API Supabase Anda</h3>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Buka <strong>supabase.com</strong> ➔ Klik ikon gerigi <strong>Project Settings</strong> (di pojok kiri bawah) ➔ pilih menu <strong>API</strong>.
+                </p>
+
+                <form onSubmit={handleTestSupabase} className="space-y-3 text-xs">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-300">Project URL *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: https://xyzcompany.supabase.co"
+                      value={supabaseUrlInput}
+                      onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                      className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-300">Project API Key (bagian "anon" "public") *</label>
+                    <textarea
+                      rows={2}
+                      required
+                      placeholder="Contoh: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      value={supabaseKeyInput}
+                      onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                      className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      disabled={supabaseTestStatus === "testing"}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all shadow-md flex items-center gap-2 disabled:opacity-60"
+                    >
+                      <Database className="w-4 h-4" />
+                      <span>{supabaseTestStatus === "testing" ? "Sedang Menguji..." : "🔍 Tes & Simpan Koneksi Supabase Sekarang"}</span>
+                    </button>
+                    <span className="text-[11px] text-slate-400">
+                      (Kunci otomatis tersimpan di peramban untuk website ini)
+                    </span>
+                  </div>
+                </form>
+              </div>
+
+              {/* LANGKAH 2: SALIN KODE SQL SKEMA TABEL */}
+              <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700/80 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white">2</span>
+                  <h3 className="font-bold text-sm text-white">Buat Tabel Database (1-Klik Salin SQL)</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Jika tabel database belum ada di Supabase Anda, klik tombol di bawah untuk menyalin seluruh skema (tabel produk, varian, mitra, order, dan rumus GPS Haversine). Buka menu <strong>SQL Editor</strong> di Supabase ➔ Paste ➔ Klik <strong>RUN</strong>.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    onClick={handleCopySql}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    <span>{copiedSql ? "✅ Kode SQL Berhasil Disalin!" : "📋 Salin Seluruh Kode SQL Schema Supabase"}</span>
+                  </button>
+
+                  <a
+                    href="https://supabase.com/dashboard"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Buka Dashboard Supabase</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+
+              {/* LANGKAH 3: SINKRONISASI DATA KE SUPABASE */}
+              <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700/80 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white">3</span>
+                  <h3 className="font-bold text-sm text-white">Upload & Sinkronkan Data Awal ke Supabase</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Setelah tabel di Supabase siap, Anda dapat langsung mengunggah data kategori produk dan data toko mitra daerah dari website ini ke database Supabase hanya dengan 1 klik:
+                </p>
+
+                <div className="space-y-3 pt-1">
+                  <button
+                    onClick={handleSyncDataToSupabase}
+                    disabled={isSyncing}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-4 h-4 rotate-180" />
+                    <span>{isSyncing ? "Sedang Mengunggah..." : "🚀 Upload Otomatis Semua Data ke Database Supabase"}</span>
+                  </button>
+
+                  {syncProgress && (
+                    <div className="p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-cyan-300 animate-in fade-in">
+                      {syncProgress}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* FAQ BANTUAN */}
+              <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/60 text-xs text-slate-400 space-y-2">
+                <span className="font-bold text-slate-200 block">💡 Mengapa Vercel Membutuhkan Variabel Ini?</span>
+                <p>
+                  Vercel membaca <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> di menu <em>Project Settings ➔ Environment Variables</em>. Dengan fitur di atas, website Anda juga otomatis menyimpannya di browser sehingga Anda dapat langsung menggunakannya tanpa harus menunggu redeploy!
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="space-y-6 animate-in fade-in">
