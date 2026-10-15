@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kimia Nusantara | Toko Kimia & Produk Kimia Rumah Tangga - Order via Mitra Daerah",
+  title: "Project Clean Indonesia | Toko Kimia & Produk Kimia Rumah Tangga - Order via Mitra Daerah",
   description:
     "Pusat pasokan bahan kimia teknis, deterjen laundry, sabun cuci piring, karbol, dan bahan baku industri. Pesan via toko mitra daerah terdekat di kota Anda untuk hemat ongkos kirim dan pengiriman instan.",
   keywords: [
