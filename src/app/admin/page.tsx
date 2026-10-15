@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { MOCK_PRODUCTS, MOCK_PARTNERS, CATEGORIES_LIST } from "@/lib/mock-data";
-import { SUPABASE_SCHEMA_SQL } from "@/lib/supabase/schema-sql";
+import { SUPABASE_SCHEMA_SQL, SUPABASE_SEED_SQL } from "@/lib/supabase/schema-sql";
 import { formatRupiah } from "@/lib/utils";
 import { Product, PartnerStore, HazardLevel, ProductCategory, ProductVariant } from "@/types/store.types";
 import { HazardBadge } from "@/components/product/HazardBadge";
@@ -95,6 +95,7 @@ export default function AdminDashboardPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState("");
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedSeedSql, setCopiedSeedSql] = useState(false);
 
   // Profil Toko Pusat (Dapat diedit semua)
   const [storeProfile, setStoreProfile] = useState({
@@ -247,6 +248,14 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleCopySeedSql = () => {
+    if (typeof window !== "undefined") {
+      navigator.clipboard.writeText(SUPABASE_SEED_SQL);
+      setCopiedSeedSql(true);
+      setTimeout(() => setCopiedSeedSql(false), 3000);
+    }
+  };
+
   const handleSyncDataToSupabase = async () => {
     const cleanUrl = supabaseUrlInput.trim();
     const cleanKey = supabaseKeyInput.trim();
@@ -262,7 +271,7 @@ export default function AdminDashboardPage() {
       const client = createBrowserClient(cleanUrl, cleanKey);
 
       // 1. Upload Kategori
-      setSyncProgress("Mengunggah master kategori produk...");
+      setSyncProgress("1/4 Mengunggah master kategori produk...");
       const categoriesData = [
         { id: "11111111-1111-1111-1111-111111111101", name: "Kimia Rumah Tangga", slug: "rumah-tangga", description: "Pembersih rumah tangga", display_order: 1 },
         { id: "11111111-1111-1111-1111-111111111102", name: "Kimia Laundry", slug: "laundry", description: "Pembersih laundry", display_order: 2 },
@@ -273,7 +282,7 @@ export default function AdminDashboardPage() {
       await client.from("categories").upsert(categoriesData, { onConflict: "slug" });
 
       // 2. Upload Mitra Daerah
-      setSyncProgress("Mengunggah jaringan mitra daerah...");
+      setSyncProgress("2/4 Mengunggah jaringan mitra daerah...");
       for (const partner of partnersList) {
         await client.from("partners").upsert({
           name: partner.name,
@@ -295,8 +304,55 @@ export default function AdminDashboardPage() {
         }, { onConflict: "slug" });
       }
 
-      setSyncProgress("✅ Selesai! Semua data kategori & mitra berhasil diunggah ke Supabase!");
-      alert("Sukses! Data telah berhasil disinkronkan ke database Supabase Anda.");
+      // 3. Upload Produk Kimia & Produk Rumah Tangga
+      setSyncProgress(`3/4 Mengunggah ${productsList.length} produk kimia & rumah tangga...`);
+      const catMap: Record<string, string> = {
+        "rumah-tangga": "11111111-1111-1111-1111-111111111101",
+        "laundry": "11111111-1111-1111-1111-111111111102",
+        "industri": "11111111-1111-1111-1111-111111111103",
+        "aroma-bibit": "11111111-1111-1111-1111-111111111104",
+        "kemasan": "11111111-1111-1111-1111-111111111105",
+      };
+
+      for (const prod of productsList) {
+        const categoryId = catMap[prod.category] || "11111111-1111-1111-1111-111111111101";
+        const { data: upsertedProduct, error: prodErr } = await client.from("products").upsert({
+          name: prod.name,
+          slug: prod.slug,
+          category_id: categoryId,
+          description: prod.description,
+          features: prod.features || [],
+          safety_guidelines: prod.safetyGuidelines || "",
+          hazard_level: prod.hazardLevel || "aman",
+          msds_url: prod.msdsUrl || null,
+          is_household_chemical: prod.isHouseholdChemical !== false,
+          image_url: prod.image,
+          is_active: true
+        }, { onConflict: "slug" }).select("id").single();
+
+        if (prodErr) {
+          console.warn("Product upload warning:", prodErr.message);
+        }
+
+        // 4. Upload Varian Produk
+        const productId = upsertedProduct?.id;
+        if (productId && prod.variants && prod.variants.length > 0) {
+          for (const v of prod.variants) {
+            await client.from("product_variants").upsert({
+              product_id: productId,
+              sku: v.sku,
+              unit_name: v.unitName,
+              base_price: v.basePrice,
+              retail_price: v.retailPrice,
+              weight_grams: v.weightGrams,
+              is_active: true
+            }, { onConflict: "sku" });
+          }
+        }
+      }
+
+      setSyncProgress("4/4 ✅ Selesai! Seluruh produk, varian kemasan, kategori & mitra sukses tersimpan di database Supabase!");
+      alert("Alhamdulillah! Seluruh master produk, varian, dan mitra daerah telah berhasil masuk ke database Supabase Anda.");
     } catch (err: any) {
       setSyncProgress("Gagal: " + (err?.message || "Terjadi kesalahan saat upload"));
     } finally {
@@ -805,7 +861,15 @@ export default function AdminDashboardPage() {
                     className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
                   >
                     <ClipboardList className="w-4 h-4" />
-                    <span>{copiedSql ? "✅ Kode SQL Berhasil Disalin!" : "📋 Salin Seluruh Kode SQL Schema Supabase"}</span>
+                    <span>{copiedSql ? "✅ Kode SQL Schema Berhasil Disalin!" : "📋 Salin Seluruh Kode SQL Schema Supabase"}</span>
+                  </button>
+
+                  <button
+                    onClick={handleCopySeedSql}
+                    className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <Package className="w-4 h-4" />
+                    <span>{copiedSeedSql ? "✅ SQL Data Produk & Mitra Disalin!" : "📦 Salin SQL Isi Produk & Mitra (Seed Data)"}</span>
                   </button>
 
                   <a
