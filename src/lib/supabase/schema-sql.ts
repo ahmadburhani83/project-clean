@@ -234,13 +234,55 @@ ALTER TABLE public.partner_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public read products" ON public.products FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read categories" ON public.categories FOR SELECT USING (true);
-CREATE POLICY "Public read partners" ON public.partners FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read variants" ON public.product_variants FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read inventory" ON public.partner_inventory FOR SELECT USING (true);
-CREATE POLICY "Public create orders" ON public.orders FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public create order items" ON public.order_items FOR INSERT WITH CHECK (true);
+-- Kebijakan Akses Penuh (CRUD) untuk Web Store & Admin Panel
+DROP POLICY IF EXISTS "Public read products" ON public.products;
+DROP POLICY IF EXISTS "Public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Public read partners" ON public.partners;
+DROP POLICY IF EXISTS "Public read variants" ON public.product_variants;
+DROP POLICY IF EXISTS "Public read inventory" ON public.partner_inventory;
+DROP POLICY IF EXISTS "Public create orders" ON public.orders;
+DROP POLICY IF EXISTS "Public create order items" ON public.order_items;
+
+CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partners" ON public.partners FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+`;
+
+export const SUPABASE_FIX_RLS_SQL = `-- ==========================================================
+-- SCRIPT IZIN AKSES SUPABASE (ROW LEVEL SECURITY / RLS FIX)
+-- Jalankan kode ini di SQL Editor Supabase agar:
+-- 1. Tambah Toko Mitra Daerah Baru Langsung Masuk ke Database Supabase
+-- 2. Tambah / Edit / Hapus Produk & Varian Kimia Berhasil
+-- 3. Transaksi Pesanan Pelanggan Berjalan Lancar
+-- ==========================================================
+
+DROP POLICY IF EXISTS "Public read products" ON public.products;
+DROP POLICY IF EXISTS "Public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Public read partners" ON public.partners;
+DROP POLICY IF EXISTS "Public read variants" ON public.product_variants;
+DROP POLICY IF EXISTS "Public read inventory" ON public.partner_inventory;
+DROP POLICY IF EXISTS "Public create orders" ON public.orders;
+DROP POLICY IF EXISTS "Public create order items" ON public.order_items;
+
+DROP POLICY IF EXISTS "Allow all on products" ON public.products;
+DROP POLICY IF EXISTS "Allow all on categories" ON public.categories;
+DROP POLICY IF EXISTS "Allow all on partners" ON public.partners;
+DROP POLICY IF EXISTS "Allow all on product_variants" ON public.product_variants;
+DROP POLICY IF EXISTS "Allow all on partner_inventory" ON public.partner_inventory;
+DROP POLICY IF EXISTS "Allow all on orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow all on order_items" ON public.order_items;
+
+CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partners" ON public.partners FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
 `;
 
 export const SUPABASE_SEED_SQL = `-- ==========================================================

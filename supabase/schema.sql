@@ -248,17 +248,20 @@ ALTER TABLE public.partner_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 
--- Public can read products, categories, partners, and active variants
-CREATE POLICY "Public read products" ON public.products FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read categories" ON public.categories FOR SELECT USING (true);
-CREATE POLICY "Public read partners" ON public.partners FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read variants" ON public.product_variants FOR SELECT USING (is_active = true);
-CREATE POLICY "Public read inventory" ON public.partner_inventory FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public read products" ON public.products;
+DROP POLICY IF EXISTS "Public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Public read partners" ON public.partners;
+DROP POLICY IF EXISTS "Public read variants" ON public.product_variants;
+DROP POLICY IF EXISTS "Public read inventory" ON public.partner_inventory;
+DROP POLICY IF EXISTS "Customers read own orders" ON public.orders;
+DROP POLICY IF EXISTS "Partners read store orders" ON public.orders;
+DROP POLICY IF EXISTS "Customers create orders" ON public.orders;
+DROP POLICY IF EXISTS "Order items insertable" ON public.order_items;
 
--- Orders: Users can read own orders, partners can read their assigned orders
-CREATE POLICY "Customers read own orders" ON public.orders FOR SELECT USING (auth.uid() = customer_id);
-CREATE POLICY "Partners read store orders" ON public.orders FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.partners WHERE partners.id = orders.partner_id AND partners.user_id = auth.uid())
-);
-CREATE POLICY "Customers create orders" ON public.orders FOR INSERT WITH CHECK (true);
-CREATE POLICY "Order items insertable" ON public.order_items FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partners" ON public.partners FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);

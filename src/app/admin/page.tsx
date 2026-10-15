@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { MOCK_PRODUCTS, MOCK_PARTNERS, CATEGORIES_LIST } from "@/lib/mock-data";
-import { SUPABASE_SCHEMA_SQL, SUPABASE_SEED_SQL } from "@/lib/supabase/schema-sql";
+import { SUPABASE_SCHEMA_SQL, SUPABASE_SEED_SQL, SUPABASE_FIX_RLS_SQL } from "@/lib/supabase/schema-sql";
 import { formatRupiah } from "@/lib/utils";
 import { Product, PartnerStore, HazardLevel, ProductCategory, ProductVariant } from "@/types/store.types";
 import { HazardBadge } from "@/components/product/HazardBadge";
@@ -96,6 +96,7 @@ export default function AdminDashboardPage() {
   const [syncProgress, setSyncProgress] = useState("");
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedSeedSql, setCopiedSeedSql] = useState(false);
+  const [copiedRlsSql, setCopiedRlsSql] = useState(false);
 
   // Profil Toko Pusat (Dapat diedit semua)
   const [storeProfile, setStoreProfile] = useState({
@@ -175,7 +176,113 @@ export default function AdminDashboardPage() {
   const [orderFilterPartner, setOrderFilterPartner] = useState("all");
   const [orderFilterStatus, setOrderFilterStatus] = useState("all");
 
-  // Load persistent data from localStorage
+  // Helper Client Supabase Aktif
+  const getActiveSupabaseClient = () => {
+    const url = supabaseUrlInput.trim() || (typeof window !== "undefined" ? localStorage.getItem("custom_supabase_url") : null) || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const key = supabaseKeyInput.trim() || (typeof window !== "undefined" ? localStorage.getItem("custom_supabase_key") : null) || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    if (url && key) {
+      try {
+        return createBrowserClient(url, key);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  // 1. Ambil data Toko Mitra langsung dari Supabase
+  const fetchPartnersFromSupabase = async (client: any) => {
+    try {
+      const { data, error } = await client.from("partners").select("*").order("name", { ascending: true });
+      if (!error && data && data.length > 0) {
+        const mapped: PartnerStore[] = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          slug: d.slug,
+          ownerName: d.owner_name || "-",
+          phone: d.phone || "-",
+          whatsapp: d.whatsapp || d.phone || "-",
+          city: d.city || "-",
+          province: d.province || "-",
+          district: d.district || d.city || "-",
+          address: d.address || "-",
+          latitude: Number(d.latitude) || -6.2088,
+          longitude: Number(d.longitude) || 106.8456,
+          serviceRadiusKm: Number(d.service_radius_km) || 25,
+          rating: Number(d.rating) || 5.0,
+          reviewCount: Number(d.review_count) || 0,
+          operationalHours: d.operational_hours || "Senin - Sabtu: 08.00 - 17.00 WIB",
+          supportsPickup: d.supports_pickup !== false,
+          supportsLocalDelivery: d.supports_local_delivery !== false,
+          stockMap: {},
+        }));
+        setPartnersList(mapped);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("admin_partners_data", JSON.stringify(mapped));
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching partners from Supabase:", e);
+    }
+  };
+
+  // 2. Ambil data Produk & Varian langsung dari Supabase
+  const fetchProductsFromSupabase = async (client: any) => {
+    try {
+      const { data, error } = await client.from("products").select("*, product_variants(*)").order("created_at", { ascending: false });
+      if (!error && data && data.length > 0) {
+        const catMap: Record<string, ProductCategory> = {
+          "11111111-1111-1111-1111-111111111101": "rumah-tangga",
+          "11111111-1111-1111-1111-111111111102": "laundry",
+          "11111111-1111-1111-1111-111111111103": "industri",
+          "11111111-1111-1111-1111-111111111104": "aroma-bibit",
+          "11111111-1111-1111-1111-111111111105": "kemasan",
+        };
+        const catLabelMap: Record<string, string> = {
+          "rumah-tangga": "Kimia Rumah Tangga",
+          "laundry": "Kimia Laundry",
+          "industri": "Bahan Kimia Teknis",
+          "aroma-bibit": "Aroma & Bibit Parfum",
+          "kemasan": "Kemasan & Jerigen",
+        };
+
+        const mapped: Product[] = data.map((p: any) => {
+          const cat = catMap[p.category_id] || "rumah-tangga";
+          return {
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            category: cat,
+            categoryLabel: catLabelMap[cat] || "Kimia Produk",
+            isHouseholdChemical: p.is_household_chemical !== false,
+            hazardLevel: (p.hazard_level || "aman") as HazardLevel,
+            description: p.description || "",
+            features: Array.isArray(p.features) ? p.features : [],
+            safetyGuidelines: p.safety_guidelines || "",
+            msdsUrl: p.msds_url || undefined,
+            image: p.image_url || "",
+            variants: (p.product_variants || []).map((v: any) => ({
+              id: v.id,
+              productId: p.id,
+              unitName: v.unit_name,
+              sku: v.sku,
+              basePrice: Number(v.base_price),
+              retailPrice: Number(v.retail_price),
+              weightGrams: Number(v.weight_grams),
+            })),
+          };
+        });
+        setProductsList(mapped);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("admin_products_data", JSON.stringify(mapped));
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching products from Supabase:", e);
+    }
+  };
+
+  // Load persistent data from localStorage & Supabase
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedProducts = localStorage.getItem("admin_products_data");
@@ -197,6 +304,11 @@ export default function AdminDashboardPage() {
       if (storedUrl && storedKey) {
         setSupabaseTestStatus("success");
         setSupabaseMessage("Koneksi Supabase tersimpan!");
+        try {
+          const client = createBrowserClient(storedUrl, storedKey);
+          fetchPartnersFromSupabase(client);
+          fetchProductsFromSupabase(client);
+        } catch {}
       }
     }
   }, []);
@@ -233,6 +345,8 @@ export default function AdminDashboardPage() {
         setSupabaseMessage(`Berhasil terhubung ke Supabase! Database aktif dan ditemukan ${data?.length || 0} produk.`);
         localStorage.setItem("custom_supabase_url", cleanUrl);
         localStorage.setItem("custom_supabase_key", cleanKey);
+        fetchPartnersFromSupabase(client);
+        fetchProductsFromSupabase(client);
       }
     } catch (err: any) {
       setSupabaseTestStatus("error_auth");
@@ -253,6 +367,14 @@ export default function AdminDashboardPage() {
       navigator.clipboard.writeText(SUPABASE_SEED_SQL);
       setCopiedSeedSql(true);
       setTimeout(() => setCopiedSeedSql(false), 3000);
+    }
+  };
+
+  const handleCopyRlsSql = () => {
+    if (typeof window !== "undefined") {
+      navigator.clipboard.writeText(SUPABASE_FIX_RLS_SQL);
+      setCopiedRlsSql(true);
+      setTimeout(() => setCopiedRlsSql(false), 3000);
     }
   };
 
@@ -279,12 +401,15 @@ export default function AdminDashboardPage() {
         { id: "11111111-1111-1111-1111-111111111104", name: "Aroma & Bibit Parfum", slug: "aroma-bibit", description: "Bibit parfum murni", display_order: 4 },
         { id: "11111111-1111-1111-1111-111111111105", name: "Kemasan & Wadah", slug: "kemasan", description: "Jerigen dan botol", display_order: 5 }
       ];
-      await client.from("categories").upsert(categoriesData, { onConflict: "slug" });
+      const { error: catErr } = await client.from("categories").upsert(categoriesData, { onConflict: "slug" });
+      if (catErr) {
+        throw new Error("Gagal mengunggah kategori: " + catErr.message);
+      }
 
       // 2. Upload Mitra Daerah
       setSyncProgress("2/4 Mengunggah jaringan mitra daerah...");
       for (const partner of partnersList) {
-        await client.from("partners").upsert({
+        const { error: partErr } = await client.from("partners").upsert({
           name: partner.name,
           slug: partner.slug,
           owner_name: partner.ownerName,
@@ -302,6 +427,10 @@ export default function AdminDashboardPage() {
           supports_local_delivery: partner.supportsLocalDelivery,
           is_active: true
         }, { onConflict: "slug" });
+
+        if (partErr) {
+          throw new Error(`Gagal mengunggah mitra "${partner.name}": ${partErr.message}`);
+        }
       }
 
       // 3. Upload Produk Kimia & Produk Rumah Tangga
@@ -331,14 +460,14 @@ export default function AdminDashboardPage() {
         }, { onConflict: "slug" }).select("id").single();
 
         if (prodErr) {
-          console.warn("Product upload warning:", prodErr.message);
+          throw new Error(`Gagal mengunggah produk "${prod.name}": ${prodErr.message}`);
         }
 
         // 4. Upload Varian Produk
         const productId = upsertedProduct?.id;
         if (productId && prod.variants && prod.variants.length > 0) {
           for (const v of prod.variants) {
-            await client.from("product_variants").upsert({
+            const { error: varErr } = await client.from("product_variants").upsert({
               product_id: productId,
               sku: v.sku,
               unit_name: v.unitName,
@@ -347,14 +476,21 @@ export default function AdminDashboardPage() {
               weight_grams: v.weightGrams,
               is_active: true
             }, { onConflict: "sku" });
+
+            if (varErr) {
+              console.warn("Varian upload warning:", varErr.message);
+            }
           }
         }
       }
 
       setSyncProgress("4/4 ✅ Selesai! Seluruh produk, varian kemasan, kategori & mitra sukses tersimpan di database Supabase!");
       alert("Alhamdulillah! Seluruh master produk, varian, dan mitra daerah telah berhasil masuk ke database Supabase Anda.");
+      fetchPartnersFromSupabase(client);
+      fetchProductsFromSupabase(client);
     } catch (err: any) {
       setSyncProgress("Gagal: " + (err?.message || "Terjadi kesalahan saat upload"));
+      alert("Upload gagal: " + err?.message + "\n\nPastikan Anda sudah menjalankan 'Salin SQL Izin Simpan (RLS Fix)' di SQL Editor Supabase.");
     } finally {
       setIsSyncing(false);
     }
@@ -383,9 +519,9 @@ export default function AdminDashboardPage() {
   };
 
   // ==========================================================
-  // 3. HANDLER OPERASI EDIT & TAMBAH PRODUK
+  // 3. HANDLER OPERASI EDIT & TAMBAH PRODUK (DENGAN SUPABASE REAL-TIME)
   // ==========================================================
-  const handleSaveProduct = (productData: Product) => {
+  const handleSaveProduct = async (productData: Product) => {
     const existingIdx = productsList.findIndex((p) => p.id === productData.id);
     let updated: Product[];
     if (existingIdx > -1) {
@@ -397,19 +533,96 @@ export default function AdminDashboardPage() {
     saveProductsToStorage(updated);
     setIsAddProductModalOpen(false);
     setEditingProduct(null);
+
+    // Kirim langsung ke Database Supabase
+    const client = getActiveSupabaseClient();
+    if (!client) {
+      alert("⚠️ PERHATIAN: Supabase Belum Terhubung!\n\nProduk berhasil tersimpan di browser ini. Karena Project URL & Anon Key belum diisi, produk BELUM masuk ke database Supabase.\n\n👉 Buka tab 'Koneksi Supabase' di panel admin untuk menghubungkan.");
+      return;
+    }
+
+    try {
+      const catMap: Record<string, string> = {
+        "rumah-tangga": "11111111-1111-1111-1111-111111111101",
+        "laundry": "11111111-1111-1111-1111-111111111102",
+        "industri": "11111111-1111-1111-1111-111111111103",
+        "aroma-bibit": "11111111-1111-1111-1111-111111111104",
+        "kemasan": "11111111-1111-1111-1111-111111111105",
+      };
+      const categoryId = catMap[productData.category] || "11111111-1111-1111-1111-111111111101";
+
+      const { data: upsertedProduct, error: prodErr } = await client.from("products").upsert({
+        name: productData.name,
+        slug: productData.slug,
+        category_id: categoryId,
+        description: productData.description,
+        features: productData.features || [],
+        safety_guidelines: productData.safetyGuidelines || "",
+        hazard_level: productData.hazardLevel || "aman",
+        msds_url: productData.msdsUrl || null,
+        is_household_chemical: productData.isHouseholdChemical !== false,
+        image_url: productData.image,
+        is_active: true
+      }, { onConflict: "slug" }).select("id").single();
+
+      if (prodErr) {
+        console.error("Gagal simpan produk ke Supabase:", prodErr);
+        alert(
+          `❌ GAGAL SIMPAN KE SUPABASE:\n${prodErr.message}\n\n` +
+          (prodErr.message.includes("policy") || prodErr.code === "42501"
+            ? "👉 Supabase memblokir izin simpan (RLS). Buka tab 'Koneksi Supabase', klik 'Salin SQL Izin Simpan (RLS Fix)', lalu RUN di SQL Editor Supabase."
+            : "Periksa kembali tabel database Anda.")
+        );
+      } else if (upsertedProduct?.id && productData.variants) {
+        for (const v of productData.variants) {
+          await client.from("product_variants").upsert({
+            product_id: upsertedProduct.id,
+            sku: v.sku,
+            unit_name: v.unitName,
+            base_price: v.basePrice,
+            retail_price: v.retailPrice,
+            weight_grams: v.weightGrams,
+            is_active: true
+          }, { onConflict: "sku" });
+        }
+        alert(`✅ ALHAMDULILLAH BERHASIL!\n\nProduk "${productData.name}" dan seluruh varian kemasannya berhasil langsung masuk ke database Supabase!`);
+        fetchProductsFromSupabase(client);
+      }
+    } catch (err: any) {
+      console.error("Error saving product to Supabase:", err);
+      alert("Terjadi kesalahan: " + (err?.message || "Koneksi terputus"));
+    }
   };
 
-  const handleDeleteProduct = (id: string) => {
-    if (confirm("Apakah Anda yakin ingin menghapus produk kimia ini?")) {
-      const updated = productsList.filter((p) => p.id !== id);
-      saveProductsToStorage(updated);
+  const handleDeleteProduct = async (id: string) => {
+    const prodToDelete = productsList.find((p) => p.id === id);
+    if (!confirm(`Apakah Anda yakin ingin menghapus produk "${prodToDelete?.name || id}"?`)) {
+      return;
+    }
+
+    const updated = productsList.filter((p) => p.id !== id);
+    saveProductsToStorage(updated);
+
+    const client = getActiveSupabaseClient();
+    if (client && prodToDelete) {
+      try {
+        const { error } = await client.from("products").delete().eq("slug", prodToDelete.slug);
+        if (error) {
+          alert("Gagal menghapus produk dari Supabase: " + error.message);
+        } else {
+          alert(`Produk "${prodToDelete.name}" telah dihapus dari Supabase.`);
+          fetchProductsFromSupabase(client);
+        }
+      } catch (err) {
+        console.error("Error deleting product from Supabase:", err);
+      }
     }
   };
 
   // ==========================================================
-  // 4. HANDLER OPERASI EDIT & TAMBAH MITRA
+  // 4. HANDLER OPERASI EDIT & TAMBAH MITRA (DENGAN SUPABASE REAL-TIME)
   // ==========================================================
-  const handleSavePartner = (partnerData: PartnerStore) => {
+  const handleSavePartner = async (partnerData: PartnerStore) => {
     const existingIdx = partnersList.findIndex((m) => m.id === partnerData.id);
     let updated: PartnerStore[];
     if (existingIdx > -1) {
@@ -421,12 +634,78 @@ export default function AdminDashboardPage() {
     savePartnersToStorage(updated);
     setIsAddPartnerModalOpen(false);
     setEditingPartner(null);
+
+    // Langsung simpan / upsert ke database Supabase
+    const client = getActiveSupabaseClient();
+    if (!client) {
+      alert("⚠️ PERHATIAN: Supabase Belum Terhubung!\n\nData toko mitra berhasil tersimpan di browser ini. Karena Project URL & Anon Key belum diisi atau belum dihubungkan, data BELUM masuk ke database Supabase.\n\n👉 Silakan buka tab 'Koneksi Supabase' di panel admin untuk menghubungkan.");
+      return;
+    }
+
+    try {
+      const payload: any = {
+        name: partnerData.name,
+        slug: partnerData.slug,
+        owner_name: partnerData.ownerName,
+        phone: partnerData.phone,
+        whatsapp: partnerData.whatsapp,
+        address: partnerData.address,
+        city: partnerData.city,
+        province: partnerData.province || "Jawa Barat",
+        district: partnerData.district || partnerData.city,
+        latitude: Number(partnerData.latitude) || -6.2088,
+        longitude: Number(partnerData.longitude) || 106.8456,
+        service_radius_km: Number(partnerData.serviceRadiusKm) || 25,
+        rating: partnerData.rating || 5.0,
+        review_count: partnerData.reviewCount || 0,
+        operational_hours: partnerData.operationalHours || "Senin - Sabtu: 08.00 - 17.00 WIB",
+        supports_pickup: partnerData.supportsPickup ?? true,
+        supports_local_delivery: partnerData.supportsLocalDelivery ?? true,
+        is_active: true
+      };
+
+      const { data, error } = await client.from("partners").upsert(payload, { onConflict: "slug" }).select().single();
+
+      if (error) {
+        console.error("Gagal simpan mitra ke Supabase:", error);
+        alert(
+          `❌ GAGAL MASUK KE SUPABASE:\n${error.message}\n\n` +
+          (error.message.includes("policy") || error.code === "42501"
+            ? "👉 PENYEBAB: Supabase Anda memblokir izin simpan (Row Level Security).\n\nSOLUSI: Buka tab 'Koneksi Supabase' di panel admin, klik tombol 'Salin SQL Izin Simpan (RLS Fix)', lalu jalankan (RUN) di menu SQL Editor Supabase."
+            : "Periksa kembali tabel database 'partners' di dashboard Supabase Anda.")
+        );
+      } else {
+        alert(`✅ ALHAMDULILLAH BERHASIL!\n\nToko Mitra "${partnerData.name}" berhasil langsung masuk ke database Supabase!`);
+        fetchPartnersFromSupabase(client);
+      }
+    } catch (err: any) {
+      console.error("Error saving partner to Supabase:", err);
+      alert("Terjadi kesalahan koneksi: " + (err?.message || "Koneksi terputus"));
+    }
   };
 
-  const handleDeletePartner = (id: string) => {
-    if (confirm("Apakah Anda yakin ingin menghapus toko mitra daerah ini?")) {
-      const updated = partnersList.filter((m) => m.id !== id);
-      savePartnersToStorage(updated);
+  const handleDeletePartner = async (id: string) => {
+    const partnerToDelete = partnersList.find((m) => m.id === id);
+    if (!confirm(`Apakah Anda yakin ingin menghapus toko mitra "${partnerToDelete?.name || id}"?`)) {
+      return;
+    }
+
+    const updated = partnersList.filter((m) => m.id !== id);
+    savePartnersToStorage(updated);
+
+    const client = getActiveSupabaseClient();
+    if (client && partnerToDelete) {
+      try {
+        const { error } = await client.from("partners").delete().eq("slug", partnerToDelete.slug);
+        if (error) {
+          alert("Gagal menghapus dari Supabase: " + error.message);
+        } else {
+          alert(`Toko mitra "${partnerToDelete.name}" telah dihapus dari Supabase.`);
+          fetchPartnersFromSupabase(client);
+        }
+      } catch (err: any) {
+        console.error("Error deleting partner from Supabase:", err);
+      }
     }
   };
 
@@ -884,6 +1163,37 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
+              {/* LANGKAH PENTING: IZIN SIMPAN (ROW LEVEL SECURITY / RLS FIX) */}
+              <div className="bg-amber-950/40 border border-amber-500/40 p-6 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center font-bold text-xs text-slate-900">!</span>
+                  <h3 className="font-bold text-sm text-amber-300">Izin Simpan Database (Wajib Dijalankan Sekali di Supabase)</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Secara default, Supabase memproteksi tabel agar tidak bisa ditambahi data sembarangan (Row Level Security). Jika Anda mengalami error saat <strong>menambah toko mitra</strong> atau <strong>produk baru</strong>, klik tombol di bawah untuk menyalin kode izin, lalu jalankan di <strong>SQL Editor</strong> Supabase:
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    onClick={handleCopyRlsSql}
+                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>{copiedRlsSql ? "✅ SQL Izin Simpan Berhasil Disalin!" : "📋 Salin SQL Izin Simpan Mitra & Produk (RLS Fix)"}</span>
+                  </button>
+
+                  <a
+                    href="https://supabase.com/dashboard"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Buka SQL Editor Supabase</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+
               {/* LANGKAH 3: SINKRONISASI DATA KE SUPABASE */}
               <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700/80 space-y-4">
                 <div className="flex items-center gap-2">
@@ -1027,6 +1337,60 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
 
+              {/* Status Banner Supabase Produk */}
+              {supabaseTestStatus === "success" || getActiveSupabaseClient() ? (
+                <div className="bg-emerald-950/70 border border-emerald-600/50 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">Supabase Terhubung: Real-Time Sync Aktif</span>
+                      <p className="text-emerald-300 text-[11px]">Setiap produk dan varian yang disimpan otomatis langsung masuk ke database Supabase.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        const client = getActiveSupabaseClient();
+                        if (client) {
+                          fetchProductsFromSupabase(client);
+                          alert("Data produk berhasil disegarkan dari database Supabase!");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span>🔄 Segarkan Produk Supabase</span>
+                    </button>
+                    <button
+                      onClick={handleCopyRlsSql}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold flex items-center gap-1 cursor-pointer border border-slate-600 transition-colors"
+                      title="Salin SQL jika Supabase menolak simpan data"
+                    >
+                      <span>{copiedRlsSql ? "✅ SQL Disalin!" : "📋 SQL Izin Simpan (RLS Fix)"}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-950/80 border border-amber-600/60 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">Perhatian: Database Supabase Belum Terhubung!</span>
+                      <p className="text-amber-200 text-[11px]">Produk yang Anda tambah saat ini hanya tersimpan di memori browser ini dan belum masuk ke Supabase.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("supabase_connect")}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shrink-0 cursor-pointer shadow-md transition-colors"
+                  >
+                    Hubungkan Supabase Sekarang ➔
+                  </button>
+                </div>
+              )}
+
               {/* Bar Filter */}
               <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
@@ -1134,6 +1498,60 @@ export default function AdminDashboardPage() {
                   <span>+ Daftarkan Mitra Baru</span>
                 </button>
               </div>
+
+              {/* Status Banner Supabase untuk Mitra */}
+              {supabaseTestStatus === "success" || getActiveSupabaseClient() ? (
+                <div className="bg-emerald-950/70 border border-emerald-600/50 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">Database Supabase Terhubung Aktif</span>
+                      <p className="text-emerald-300 text-[11px]">Setiap kali Anda menambah, mengedit, atau menghapus toko mitra di bawah, data langsung tersinkronisasi ke cloud database Supabase.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        const client = getActiveSupabaseClient();
+                        if (client) {
+                          fetchPartnersFromSupabase(client);
+                          alert("Data mitra berhasil disegarkan dari database Supabase!");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <span>🔄 Segarkan dari Supabase</span>
+                    </button>
+                    <button
+                      onClick={handleCopyRlsSql}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold flex items-center gap-1 cursor-pointer border border-slate-600 transition-colors"
+                      title="Salin SQL jika Supabase menolak simpan data"
+                    >
+                      <span>{copiedRlsSql ? "✅ SQL Disalin!" : "📋 SQL Izin Simpan (RLS Fix)"}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-950/80 border border-amber-600/60 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">Perhatian: Database Supabase Belum Terhubung!</span>
+                      <p className="text-amber-200 text-[11px]">Toko mitra yang Anda tambah saat ini hanya tersimpan di memori browser ini dan belum masuk ke Supabase.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("supabase_connect")}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shrink-0 cursor-pointer shadow-md transition-colors"
+                  >
+                    Hubungkan Supabase Sekarang ➔
+                  </button>
+                </div>
+              )}
 
               {/* Bar Filter */}
               <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80">
