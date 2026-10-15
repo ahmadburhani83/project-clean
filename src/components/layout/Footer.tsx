@@ -101,6 +101,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/admin" className="hover:text-amber-400 text-amber-300/90 font-semibold transition-colors">
+                  Panel Super Admin (Backend) 🔐
+                </Link>
+              </li>
+              <li>
                 <span className="text-slate-500">Cakupan: Jabodetabek, Bandung, Surabaya, Semarang, Medan, Makassar, Jogja.</span>
               </li>
             </ul>

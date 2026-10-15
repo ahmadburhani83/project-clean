@@ -26,7 +26,13 @@ Dilengkapi dengan sistem **Hyperlocal Order via Mitra Toko Daerah** untuk memeca
 4. **Portal Mitra (Partner Dashboard):**
    - Manajemen pesanan masuk & ubah status (Menunggu Konfirmasi ➔ Sedang Disiapkan ➔ Siap Diambil/Selesai).
    - Pengaturan stok inventaris lokal per mitra.
-5. **Siap Deploy ke Vercel & Supabase:**
+5. **Panel Super Admin (Backend Dashboard):**
+   - Akses via `/admin` atau `/backend`.
+   - Mengelola Master Produk Kimia (tambah, edit, hapus, atur tingkat bahaya & varian kemasan 1L/5L/20L/25kg).
+   - Mengelola Jaringan Mitra Daerah (verifikasi mitra baru, atur radius km, GPS koordinat).
+   - Pemantauan Pesanan Seluruh Indonesia (filter per mitra, ubah status pesanan, export rekap CSV).
+   - Kepatuhan Keselamatan, Dokumen MSDS, dan Konfigurasi Database Supabase.
+6. **Siap Deploy ke Vercel & Supabase:**
    - Serverless architecture di Vercel.
    - Managed PostgreSQL database, Auth, & Storage di Supabase.
 
