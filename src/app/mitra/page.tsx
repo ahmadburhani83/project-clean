@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MOCK_PARTNERS } from "@/lib/mock-data";
 import { useCartStore } from "@/lib/store/cart-store";
 import { calculateDistanceKm } from "@/lib/utils";
 import { PartnerStore } from "@/types/store.types";
+import { fetchLivePartners, saveLivePartner } from "@/lib/supabase/data-service";
 import { 
   Building2, 
   MapPin, 
@@ -24,6 +25,7 @@ import {
 
 export default function MitraDirectoryPage() {
   const { selectedPartner, setSelectedPartner } = useCartStore();
+  const [partners, setPartners] = useState<PartnerStore[]>(MOCK_PARTNERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProvince, setSelectedProvince] = useState("all");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -40,13 +42,21 @@ export default function MitraDirectoryPage() {
     address: "",
   });
 
-  const provinces = useMemo(() => {
-    const list = Array.from(new Set(MOCK_PARTNERS.map((p) => p.province)));
-    return ["all", ...list];
+  useEffect(() => {
+    fetchLivePartners().then((data) => {
+      if (data && data.length > 0) {
+        setPartners(data);
+      }
+    });
   }, []);
 
+  const provinces = useMemo(() => {
+    const list = Array.from(new Set(partners.map((p) => p.province)));
+    return ["all", ...list];
+  }, [partners]);
+
   const filteredPartners = useMemo(() => {
-    let result = MOCK_PARTNERS.map((p) => {
+    let result = partners.map((p) => {
       let distanceKm: number | undefined = undefined;
       if (userLocation) {
         distanceKm = calculateDistanceKm(
@@ -79,7 +89,7 @@ export default function MitraDirectoryPage() {
     }
 
     return result;
-  }, [searchQuery, selectedProvince, userLocation]);
+  }, [partners, searchQuery, selectedProvince, userLocation]);
 
   const handleDetectGPS = () => {
     if (!navigator.geolocation) return;
@@ -98,9 +108,43 @@ export default function MitraDirectoryPage() {
     );
   };
 
-  const handleRegisterPartner = (e: React.FormEvent) => {
+  const handleRegisterPartner = async (e: React.FormEvent) => {
     e.preventDefault();
+    const slug = partnerForm.storeName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `mitra-${Date.now()}`;
+
+    const newPartner: PartnerStore = {
+      id: `ptr-${Date.now()}`,
+      name: partnerForm.storeName,
+      slug: slug,
+      ownerName: partnerForm.ownerName,
+      phone: partnerForm.phone,
+      whatsapp: partnerForm.phone,
+      address: partnerForm.address,
+      city: partnerForm.city,
+      province: partnerForm.province || "Jawa Barat",
+      district: partnerForm.city,
+      latitude: -6.2088,
+      longitude: 106.8456,
+      serviceRadiusKm: 25,
+      rating: 5.0,
+      reviewCount: 0,
+      operationalHours: "Senin - Sabtu: 08.00 - 17.00 WIB",
+      supportsPickup: true,
+      supportsLocalDelivery: true,
+      stockMap: {},
+    };
+
+    setPartners((prev) => [...prev, newPartner]);
     setFormSubmitted(true);
+
+    try {
+      await saveLivePartner(newPartner);
+    } catch (err) {
+      console.warn("Gagal simpan pendaftaran mitra ke Supabase:", err);
+    }
   };
 
   return (

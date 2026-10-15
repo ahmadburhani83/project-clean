@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useCartStore } from "@/lib/store/cart-store";
+import { useStoreProfile } from "@/lib/supabase/data-service";
 import { 
   Store, 
   ShoppingCart, 
@@ -20,6 +21,7 @@ import {
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const storeProfile = useStoreProfile();
   const { 
     selectedPartner, 
     setPartnerModalOpen, 
@@ -38,7 +40,7 @@ export function Navbar() {
               Hyperlocal Mitra
             </span>
             <span className="truncate">
-              Pesan bahan kimia & produk rumah tangga lewat <strong>Mitra Terdekat di Kota Anda</strong> untuk hemat ongkir!
+              {storeProfile.topBannerText}
             </span>
           </div>
 
@@ -66,11 +68,11 @@ export function Navbar() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                  KIMIA<span className="text-blue-600">NUSANTARA</span>
+                  {storeProfile.storeName}
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium -mt-1 hidden sm:block">
-                Toko Kimia & Produk Rumah Tangga
+                {storeProfile.tagline}
               </p>
             </div>
           </Link>

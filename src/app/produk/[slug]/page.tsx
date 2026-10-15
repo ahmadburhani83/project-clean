@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { MOCK_PRODUCTS } from "@/lib/mock-data";
 import { HazardBadge } from "@/components/product/HazardBadge";
 import { formatRupiah } from "@/lib/utils";
 import { useCartStore } from "@/lib/store/cart-store";
+import { Product } from "@/types/store.types";
+import { fetchLiveProducts } from "@/lib/supabase/data-service";
 import { 
   ShoppingCart, 
   MapPin, 
@@ -28,7 +30,19 @@ function ProductDetailContent() {
   const router = useRouter();
   const slug = params?.slug as string;
 
-  const product = MOCK_PRODUCTS.find((p) => p.slug === slug);
+  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLiveProducts().then((data) => {
+      if (data && data.length > 0) {
+        setProducts(data);
+      }
+      setIsLoading(false);
+    });
+  }, []);
+
+  const product = products.find((p) => p.slug === slug);
 
   const { 
     selectedPartner, 
@@ -40,7 +54,7 @@ function ProductDetailContent() {
   const [quantity, setQuantity] = useState(1);
   const [addedToast, setAddedToast] = useState(false);
 
-  if (!product) {
+  if (!product && !isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
         <FlaskConical className="w-16 h-16 text-slate-300 mx-auto" />
@@ -55,6 +69,17 @@ function ProductDetailContent() {
       </div>
     );
   }
+
+  if (!product && isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-slate-500 text-sm">Memuat detail produk...</p>
+      </div>
+    );
+  }
+
+  if (!product) return null;
 
   const currentVariant = product.variants[selectedVariantIndex] || product.variants[0];
 

@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useStoreProfile } from "@/lib/supabase/data-service";
 import { 
   FlaskConical, 
   ShieldAlert, 
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 
 export function Footer() {
+  const storeProfile = useStoreProfile();
+
   return (
     <footer className="bg-slate-900 text-slate-300 text-sm mt-auto border-t border-slate-800">
       {/* Disclaimer Keamanan Kimia (Wajib untuk Toko Kimia) */}
@@ -37,7 +40,7 @@ export function Footer() {
                 <FlaskConical className="w-5 h-5" />
               </div>
               <span className="text-lg font-black tracking-tight text-white">
-                KIMIA<span className="text-blue-400">NUSANTARA</span>
+                {storeProfile.storeName}
               </span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
@@ -117,15 +120,15 @@ export function Footer() {
             <ul className="space-y-2.5 text-xs text-slate-400">
               <li className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-emerald-400" />
-                <span>WhatsApp Pusat: 0812-3456-7890</span>
+                <span>WhatsApp Hotline: {storeProfile.hotlineWhatsApp}</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-blue-400" />
-                <span>Email: support@kimianusantara.id</span>
+                <span>Email: {storeProfile.supportEmail}</span>
               </li>
               <li className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-amber-400" />
-                <span>Gudang Pusat: Kawasan Industri Cikupa, Tangerang</span>
+                <span>Gudang Pusat: {storeProfile.centralWarehouseAddress}</span>
               </li>
             </ul>
           </div>
@@ -134,7 +137,7 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-          <p>© 2026 Kimia Nusantara. Seluruh hak cipta dilindungi undang-undang.</p>
+          <p>© 2026 {storeProfile.storeName}. Seluruh hak cipta dilindungi undang-undang.</p>
           <div className="flex items-center gap-4">
             <span>Published on Vercel</span>
             <span>•</span>

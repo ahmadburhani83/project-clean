@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MOCK_PRODUCTS, MOCK_PARTNERS } from "@/lib/mock-data";
+import { MOCK_PRODUCTS } from "@/lib/mock-data";
 import { ProductCard } from "@/components/product/ProductCard";
 import { useCartStore } from "@/lib/store/cart-store";
+import { Product } from "@/types/store.types";
+import { fetchLiveProducts, useStoreProfile } from "@/lib/supabase/data-service";
 import { 
   FlaskConical, 
   Sparkles, 
@@ -26,6 +28,16 @@ export default function HomePage() {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
   const { selectedPartner, setPartnerModalOpen } = useCartStore();
+  const storeProfile = useStoreProfile();
+  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+
+  useEffect(() => {
+    fetchLiveProducts().then((data) => {
+      if (data && data.length > 0) {
+        setProducts(data);
+      }
+    });
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,8 +48,8 @@ export default function HomePage() {
     }
   };
 
-  const householdProducts = MOCK_PRODUCTS.filter((p) => p.isHouseholdChemical);
-  const technicalProducts = MOCK_PRODUCTS.filter((p) => !p.isHouseholdChemical);
+  const householdProducts = products.filter((p) => p.isHouseholdChemical);
+  const technicalProducts = products.filter((p) => !p.isHouseholdChemical);
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
@@ -320,7 +332,7 @@ export default function HomePage() {
               Punya Toko Kimia atau Mau Jadi Agen Resmi di Daerah Anda?
             </h2>
             <p className="text-sm sm:text-base text-blue-100 leading-relaxed">
-              Bergabunglah ke dalam jaringan mitra Kimia Nusantara. Dapatkan pasokan produk harga pabrik, ribuan pesanan online dari pelanggan di kota Anda, dan dashboard manajemen stok praktis.
+              Bergabunglah ke dalam jaringan mitra {storeProfile.storeName || "Kimia Nusantara"}. Dapatkan pasokan produk harga pabrik, ribuan pesanan online dari pelanggan di kota Anda, dan dashboard manajemen stok praktis.
             </p>
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <Link

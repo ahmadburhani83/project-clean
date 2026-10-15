@@ -200,3 +200,17 @@ VALUES
   ('22222222-2222-2222-2222-222222222201', '44444444-4444-4444-4444-444444444419', 80)
 ON CONFLICT (partner_id, variant_id) DO UPDATE
 SET stock_quantity = EXCLUDED.stock_quantity;
+
+-- 6. SETTING DEFAULT PROFIL TOKO PUSAT
+INSERT INTO public.store_settings (id, store_name, tagline, top_banner_text, central_warehouse_address, hotline_whatsapp, support_email, cargo_notes)
+VALUES (
+  'default',
+  'KIMIA NUSANTARA',
+  'Toko Kimia & Produk Rumah Tangga',
+  'Pesan bahan kimia & produk rumah tangga lewat Mitra Terdekat di Kota Anda untuk hemat ongkir!',
+  'Kawasan Industri Cikupa Mas Blok B-12, Tangerang, Banten',
+  '081234567890',
+  'support@kimianusantara.id',
+  'Pengiriman luar kota menggunakan armada kargo khusus cairan bersegel.'
+)
+ON CONFLICT (id) DO NOTHING;

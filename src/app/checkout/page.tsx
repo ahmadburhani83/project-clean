@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCartStore } from "@/lib/store/cart-store";
 import { formatRupiah, generateWhatsAppOrderLink } from "@/lib/utils";
 import { Order } from "@/types/store.types";
+import { createCustomerOrder } from "@/lib/supabase/data-service";
 import { 
   Store, 
   MapPin, 
@@ -57,7 +58,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
+  const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!customerInfo.name || !customerInfo.phone || !customerInfo.address) {
@@ -89,6 +90,13 @@ export default function CheckoutPage() {
       status: "pending",
       createdAt: new Date().toISOString(),
     };
+
+    // Simpan pesanan ke database Supabase & local storage
+    try {
+      await createCustomerOrder(newOrder);
+    } catch (err) {
+      console.warn("Gagal simpan order ke Supabase:", err);
+    }
 
     // Buat tautan WhatsApp otomatis ke mitra
     const waLink = generateWhatsAppOrderLink(newOrder);

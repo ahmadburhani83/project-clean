@@ -236,6 +236,19 @@ RETURNS TABLE (
     ORDER BY distance_km ASC;
 $$;
 
+-- 11. STORE SETTINGS (PROFIL & IDENTITAS TOKO)
+CREATE TABLE IF NOT EXISTS public.store_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    store_name TEXT NOT NULL DEFAULT 'KIMIA NUSANTARA',
+    tagline TEXT NOT NULL DEFAULT 'Toko Kimia & Produk Rumah Tangga',
+    top_banner_text TEXT NOT NULL DEFAULT 'Pesan bahan kimia & produk rumah tangga lewat Mitra Terdekat di Kota Anda untuk hemat ongkir!',
+    central_warehouse_address TEXT NOT NULL DEFAULT 'Kawasan Industri Cikupa Mas Blok B-12, Tangerang, Banten',
+    hotline_whatsapp TEXT NOT NULL DEFAULT '081234567890',
+    support_email TEXT NOT NULL DEFAULT 'support@kimianusantara.id',
+    cargo_notes TEXT NOT NULL DEFAULT 'Pengiriman luar kota menggunakan armada kargo khusus cairan bersegel.',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==========================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==========================================================
@@ -247,6 +260,7 @@ ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.partner_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public read products" ON public.products;
 DROP POLICY IF EXISTS "Public read categories" ON public.categories;
@@ -257,6 +271,7 @@ DROP POLICY IF EXISTS "Customers read own orders" ON public.orders;
 DROP POLICY IF EXISTS "Partners read store orders" ON public.orders;
 DROP POLICY IF EXISTS "Customers create orders" ON public.orders;
 DROP POLICY IF EXISTS "Order items insertable" ON public.order_items;
+DROP POLICY IF EXISTS "Allow all on store_settings" ON public.store_settings;
 
 CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
@@ -265,3 +280,4 @@ CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL
 CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on store_settings" ON public.store_settings FOR ALL USING (true) WITH CHECK (true);

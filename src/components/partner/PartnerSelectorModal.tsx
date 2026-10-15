@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useCartStore } from "@/lib/store/cart-store";
 import { MOCK_PARTNERS } from "@/lib/mock-data";
 import { PartnerStore } from "@/types/store.types";
 import { calculateDistanceKm } from "@/lib/utils";
+import { fetchLivePartners } from "@/lib/supabase/data-service";
 import { 
   MapPin, 
   X, 
@@ -27,21 +28,30 @@ export function PartnerSelectorModal() {
     setSelectedPartner 
   } = useCartStore();
 
+  const [partners, setPartners] = useState<PartnerStore[]>(MOCK_PARTNERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProvince, setSelectedProvince] = useState("all");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetchLivePartners().then((data) => {
+      if (data && data.length > 0) {
+        setPartners(data);
+      }
+    });
+  }, [isPartnerModalOpen]);
+
   // Daftar provinsi unik
   const provinces = useMemo(() => {
-    const list = Array.from(new Set(MOCK_PARTNERS.map((p) => p.province)));
+    const list = Array.from(new Set(partners.map((p) => p.province)));
     return ["all", ...list];
-  }, []);
+  }, [partners]);
 
   // Filter & Urutkan mitra (berdasarkan jarak terdekat jika lokasi terdeteksi)
   const filteredPartners = useMemo(() => {
-    let result = MOCK_PARTNERS.map((partner) => {
+    let result = partners.map((partner) => {
       let distanceKm: number | undefined = undefined;
       if (userLocation) {
         distanceKm = calculateDistanceKm(
@@ -74,7 +84,7 @@ export function PartnerSelectorModal() {
     }
 
     return result;
-  }, [searchQuery, selectedProvince, userLocation]);
+  }, [partners, searchQuery, selectedProvince, userLocation]);
 
   const handleDetectLocation = () => {
     if (!navigator.geolocation) {

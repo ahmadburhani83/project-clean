@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { MOCK_PRODUCTS, CATEGORIES_LIST } from "@/lib/mock-data";
 import { ProductCard } from "@/components/product/ProductCard";
 import { useCartStore } from "@/lib/store/cart-store";
+import { Product } from "@/types/store.types";
+import { fetchLiveProducts } from "@/lib/supabase/data-service";
 import { 
   Filter, 
   Search, 
@@ -21,6 +23,7 @@ function CatalogContent() {
   const initialCategory = searchParams.get("kategori") || "semua";
   const initialSearch = searchParams.get("q") || "";
 
+  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [productTypeFilter, setProductTypeFilter] = useState<"all" | "household" | "technical">("all");
@@ -29,8 +32,16 @@ function CatalogContent() {
 
   const { selectedPartner, setPartnerModalOpen } = useCartStore();
 
+  useEffect(() => {
+    fetchLiveProducts().then((data) => {
+      if (data && data.length > 0) {
+        setProducts(data);
+      }
+    });
+  }, []);
+
   const filteredProducts = useMemo(() => {
-    let result = [...MOCK_PRODUCTS];
+    let result = [...products];
 
     // Filter Kategori
     if (selectedCategory !== "semua") {
@@ -70,7 +81,7 @@ function CatalogContent() {
     });
 
     return result;
-  }, [selectedCategory, productTypeFilter, hazardFilter, searchQuery, sortBy]);
+  }, [products, selectedCategory, productTypeFilter, hazardFilter, searchQuery, sortBy]);
 
   const resetFilters = () => {
     setSelectedCategory("semua");

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { MOCK_PRODUCTS, MOCK_PARTNERS, CATEGORIES_LIST } from "@/lib/mock-data";
 import { SUPABASE_SCHEMA_SQL, SUPABASE_SEED_SQL, SUPABASE_FIX_RLS_SQL } from "@/lib/supabase/schema-sql";
+import { saveStoreProfile, fetchStoreProfile, fetchLiveOrders, updateLiveOrderStatus } from "@/lib/supabase/data-service";
 import { formatRupiah } from "@/lib/utils";
 import { Product, PartnerStore, HazardLevel, ProductCategory, ProductVariant } from "@/types/store.types";
 import { HazardBadge } from "@/components/product/HazardBadge";
@@ -310,6 +311,12 @@ export default function AdminDashboardPage() {
           fetchProductsFromSupabase(client);
         } catch {}
       }
+
+      // Selalu muat profil toko & pesanan dari Supabase / LocalStorage
+      fetchStoreProfile().then(setStoreProfile);
+      fetchLiveOrders().then((ords) => {
+        if (ords && ords.length > 0) setOrdersList(ords);
+      });
     }
   }, []);
 
@@ -347,6 +354,10 @@ export default function AdminDashboardPage() {
         localStorage.setItem("custom_supabase_key", cleanKey);
         fetchPartnersFromSupabase(client);
         fetchProductsFromSupabase(client);
+        fetchStoreProfile().then(setStoreProfile);
+        fetchLiveOrders().then((ords) => {
+          if (ords && ords.length > 0) setOrdersList(ords);
+        });
       }
     } catch (err: any) {
       setSupabaseTestStatus("error_auth");
@@ -735,6 +746,20 @@ export default function AdminDashboardPage() {
     setPasswordChangeSuccess(true);
     setNewPasswordForm({ old: "", newPass: "", confirm: "" });
     setTimeout(() => setPasswordChangeSuccess(false), 3000);
+  };
+
+  const handleUpdateOrderStatus = async (orderNumber: string, newStatus: string) => {
+    const updated = ordersList.map((o) => o.orderNumber === orderNumber ? { ...o, status: newStatus } : o);
+    setOrdersList(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("admin_orders_data", JSON.stringify(updated));
+    }
+
+    try {
+      await updateLiveOrderStatus(orderNumber, newStatus);
+    } catch (err) {
+      console.warn("Gagal update status order ke Supabase:", err);
+    }
   };
 
   // Filter Data
@@ -1703,14 +1728,19 @@ export default function AdminDashboardPage() {
 
                 <div className="pt-2 flex justify-end">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       saveStoreProfileToStorage(storeProfile);
-                      alert("Profil toko pusat berhasil diperbarui dan tersimpan!");
+                      const res = await saveStoreProfile(storeProfile);
+                      if (res.error) {
+                        alert("Profil tersimpan di browser, namun Supabase menolak: " + res.error.message + "\n\nPastikan Anda sudah menjalankan SQL Permission (RLS Fix) di Supabase.");
+                      } else {
+                        alert(`✅ Alhamdulillah! Profil toko "${storeProfile.storeName}" dan seluruh identitas brand berhasil tersimpan langsung ke database Supabase dan langsung aktif di seluruh website!`);
+                      }
                     }}
                     className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md"
                   >
                     <Save className="w-4 h-4" />
-                    <span>Simpan Perubahan Profil Toko</span>
+                    <span>Simpan Perubahan Profil Toko ke Supabase</span>
                   </button>
                 </div>
               </div>
@@ -1780,13 +1810,30 @@ export default function AdminDashboardPage() {
                   <p className="text-xs text-slate-400">Pantau seluruh order yang masuk ke mitra-mitra daerah se-Indonesia.</p>
                 </div>
 
-                <button
-                  onClick={() => alert("Data pesanan berhasil diexport ke CSV.")}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer shrink-0"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Export CSV</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={async () => {
+                      const liveOrds = await fetchLiveOrders();
+                      if (liveOrds && liveOrds.length > 0) {
+                        setOrdersList(liveOrds);
+                        alert(`Alhamdulillah! Berhasil menarik ${liveOrds.length} pesanan langsung dari database Supabase!`);
+                      } else {
+                        alert("Belum ada data pesanan baru di Supabase.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>🔄 Segarkan Pesanan Supabase</span>
+                  </button>
+
+                  <button
+                    onClick={() => alert("Data pesanan berhasil diexport ke CSV.")}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Export CSV</span>
+                  </button>
+                </div>
               </div>
 
               {/* Filter */}
@@ -1811,6 +1858,7 @@ export default function AdminDashboardPage() {
                   <option value="pending">Menunggu Konfirmasi</option>
                   <option value="processing">Sedang Disiapkan</option>
                   <option value="completed">Selesai</option>
+                  <option value="cancelled">Dibatalkan</option>
                 </select>
               </div>
 
@@ -1823,7 +1871,7 @@ export default function AdminDashboardPage() {
                         <span className="font-mono text-xs font-bold text-blue-400 bg-slate-900 px-2 py-0.5 rounded">
                           {order.orderNumber}
                         </span>
-                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-amber-500/20 text-amber-300 border-amber-500/30">
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${order.status === "completed" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" : order.status === "processing" ? "bg-blue-500/20 text-blue-300 border-blue-500/30" : order.status === "cancelled" ? "bg-red-500/20 text-red-300 border-red-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30"}`}>
                           {order.status.toUpperCase()}
                         </span>
                         <span className="text-[11px] text-slate-400">• {order.date}</span>
@@ -1835,9 +1883,42 @@ export default function AdminDashboardPage() {
                       </p>
                     </div>
 
-                    <div className="text-right sm:self-center">
-                      <span className="text-base font-black text-white block">{formatRupiah(order.totalAmount)}</span>
-                      <span className="text-xs text-slate-400">{order.paymentMethod}</span>
+                    <div className="flex flex-col sm:items-end justify-between gap-2 shrink-0">
+                      <div className="text-right">
+                        <span className="text-base font-black text-white block">{formatRupiah(order.totalAmount)}</span>
+                        <span className="text-xs text-slate-400">{order.paymentMethod}</span>
+                      </div>
+
+                      {/* Tombol Kontrol Status Pesanan Real-Time */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {order.status !== "processing" && order.status !== "completed" && (
+                          <button
+                            onClick={() => handleUpdateOrderStatus(order.orderNumber, "processing")}
+                            className="px-2.5 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer border border-blue-500/40"
+                            title="Tandai pesanan sedang disiapkan mitra"
+                          >
+                            Proses
+                          </button>
+                        )}
+                        {order.status !== "completed" && (
+                          <button
+                            onClick={() => handleUpdateOrderStatus(order.orderNumber, "completed")}
+                            className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer border border-emerald-500/40"
+                            title="Tandai pesanan selesai diambil/dikirim"
+                          >
+                            Selesai
+                          </button>
+                        )}
+                        {order.status !== "cancelled" && order.status !== "completed" && (
+                          <button
+                            onClick={() => handleUpdateOrderStatus(order.orderNumber, "cancelled")}
+                            className="px-2.5 py-1 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer border border-red-500/40"
+                            title="Batalkan pesanan"
+                          >
+                            Batal
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

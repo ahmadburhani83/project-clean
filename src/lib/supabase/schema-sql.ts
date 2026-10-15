@@ -159,6 +159,19 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     subtotal DECIMAL(12, 2) NOT NULL
 );
 
+-- 11. STORE SETTINGS (PROFIL & PENGATURAN TOKO PUSAT)
+CREATE TABLE IF NOT EXISTS public.store_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    store_name TEXT NOT NULL DEFAULT 'KIMIA NUSANTARA',
+    tagline TEXT NOT NULL DEFAULT 'Toko Kimia & Produk Rumah Tangga',
+    top_banner_text TEXT NOT NULL DEFAULT 'Pesan bahan kimia & produk rumah tangga lewat Mitra Terdekat di Kota Anda untuk hemat ongkir!',
+    central_warehouse_address TEXT NOT NULL DEFAULT 'Kawasan Industri Cikupa Mas Blok B-12, Tangerang, Banten',
+    hotline_whatsapp TEXT NOT NULL DEFAULT '081234567890',
+    support_email TEXT NOT NULL DEFAULT 'support@kimianusantara.id',
+    cargo_notes TEXT DEFAULT 'Pengiriman luar kota menggunakan armada kargo khusus cairan bersegel.',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- FUNGSI JARAK HAVERSINE (Pencarian Mitra Terdekat)
 CREATE OR REPLACE FUNCTION get_nearby_partners(
     user_lat DOUBLE PRECISION,
@@ -233,6 +246,7 @@ ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.partner_inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 
 -- Kebijakan Akses Penuh (CRUD) untuk Web Store & Admin Panel
 DROP POLICY IF EXISTS "Public read products" ON public.products;
@@ -242,6 +256,7 @@ DROP POLICY IF EXISTS "Public read variants" ON public.product_variants;
 DROP POLICY IF EXISTS "Public read inventory" ON public.partner_inventory;
 DROP POLICY IF EXISTS "Public create orders" ON public.orders;
 DROP POLICY IF EXISTS "Public create order items" ON public.order_items;
+DROP POLICY IF EXISTS "Allow all on store_settings" ON public.store_settings;
 
 CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
@@ -250,6 +265,7 @@ CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL
 CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on store_settings" ON public.store_settings FOR ALL USING (true) WITH CHECK (true);
 `;
 
 export const SUPABASE_FIX_RLS_SQL = `-- ==========================================================
@@ -258,6 +274,7 @@ export const SUPABASE_FIX_RLS_SQL = `-- ========================================
 -- 1. Tambah Toko Mitra Daerah Baru Langsung Masuk ke Database Supabase
 -- 2. Tambah / Edit / Hapus Produk & Varian Kimia Berhasil
 -- 3. Transaksi Pesanan Pelanggan Berjalan Lancar
+-- 4. Profil Toko Pusat & Hotline WhatsApp Tersinkronisasi
 -- ==========================================================
 
 DROP POLICY IF EXISTS "Public read products" ON public.products;
@@ -275,6 +292,7 @@ DROP POLICY IF EXISTS "Allow all on product_variants" ON public.product_variants
 DROP POLICY IF EXISTS "Allow all on partner_inventory" ON public.partner_inventory;
 DROP POLICY IF EXISTS "Allow all on orders" ON public.orders;
 DROP POLICY IF EXISTS "Allow all on order_items" ON public.order_items;
+DROP POLICY IF EXISTS "Allow all on store_settings" ON public.store_settings;
 
 CREATE POLICY "Allow all on products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
@@ -283,12 +301,28 @@ CREATE POLICY "Allow all on product_variants" ON public.product_variants FOR ALL
 CREATE POLICY "Allow all on partner_inventory" ON public.partner_inventory FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on order_items" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on store_settings" ON public.store_settings FOR ALL USING (true) WITH CHECK (true);
 `;
 
 export const SUPABASE_SEED_SQL = `-- ==========================================================
 -- DATA AWAL LENGKAP (SEED DATA)
 -- TOKO KIMIA, PRODUK KIMIA RUMAH TANGGA, & MITRA DAERAH
 -- ==========================================================
+
+-- 0. PENGATURAN TOKO PUSAT (STORE PROFILE)
+INSERT INTO public.store_settings (id, store_name, tagline, top_banner_text, central_warehouse_address, hotline_whatsapp, support_email, cargo_notes)
+VALUES (
+  'default',
+  'KIMIA NUSANTARA',
+  'Toko Kimia & Produk Rumah Tangga',
+  'Pesan bahan kimia & produk rumah tangga lewat Mitra Terdekat di Kota Anda untuk hemat ongkir!',
+  'Kawasan Industri Cikupa Mas Blok B-12, Tangerang, Banten',
+  '081234567890',
+  'support@kimianusantara.id',
+  'Pengiriman luar kota menggunakan armada kargo khusus cairan bersegel.'
+)
+ON CONFLICT (id) DO UPDATE
+SET store_name = EXCLUDED.store_name, tagline = EXCLUDED.tagline, top_banner_text = EXCLUDED.top_banner_text, hotline_whatsapp = EXCLUDED.hotline_whatsapp, central_warehouse_address = EXCLUDED.central_warehouse_address;
 
 -- 1. MASTER KATEGORI
 INSERT INTO public.categories (id, name, slug, description, display_order)
