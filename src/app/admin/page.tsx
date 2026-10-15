@@ -861,6 +861,35 @@ export default function AdminDashboardPage() {
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="space-y-6 animate-in fade-in">
+              {/* Banner Supabase Database Shortcut */}
+              <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-slate-900 border border-emerald-600/50 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+                    <Database className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm text-white">Status Koneksi Supabase Database</h3>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${supabaseTestStatus === "success" ? "bg-emerald-900 text-emerald-300 border border-emerald-700" : "bg-amber-900/80 text-amber-300 border border-amber-700"}`}>
+                        {supabaseTestStatus === "success" ? "TERHUBUNG" : "SETUP DIBUTUHKAN"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      {supabaseTestStatus === "success"
+                        ? "✅ Database Supabase aktif dan siap digunakan untuk transaksi produk & mitra."
+                        : "Klik tombol hijau di samping untuk menghubungkan Project URL & Anon Key Supabase tanpa coding!"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveTab("supabase_connect")}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                >
+                  <Database className="w-4 h-4" />
+                  <span>Buka Menu Supabase ➔</span>
+                </button>
+              </div>
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-white">
