@@ -50,10 +50,6 @@ export function Navbar() {
             <Link href="/mitra-portal" className="hover:text-white transition-colors flex items-center gap-1">
               <Store className="w-3.5 h-3.5" /> Portal Mitra
             </Link>
-            <span>•</span>
-            <Link href="/admin" className="hover:text-amber-300 transition-colors flex items-center gap-1 font-bold text-amber-200">
-              <LayoutDashboard className="w-3.5 h-3.5 text-amber-400" /> Backend Admin
-            </Link>
           </div>
         </div>
       </div>
@@ -238,13 +234,6 @@ export function Navbar() {
               className="p-2 hover:bg-slate-50 rounded-lg flex items-center gap-2 text-slate-900 font-bold border-t border-slate-100 pt-3"
             >
               <Store className="w-4 h-4 text-blue-600" /> Portal Mitra (Dashboard)
-            </Link>
-            <Link
-              href="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="p-2 bg-amber-50 rounded-lg flex items-center gap-2 text-amber-900 font-bold border border-amber-200"
-            >
-              <LayoutDashboard className="w-4 h-4 text-amber-600" /> Panel Backend (Super Admin)
             </Link>
           </nav>
         </div>
